@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 from functools import lru_cache
 import os
 from pathlib import Path
+from typing import Optional
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -25,6 +28,8 @@ class Settings(BaseSettings):
     max_clip_duration_sec: float = 8.0
     request_timeout_sec: float = 30.0
     warmup_on_startup: bool = True
+    # If set, expensive HTTP routes require Authorization: Bearer <key> or X-Api-Key: <key>
+    api_key: Optional[str] = None
     dense_release_window_seconds: float = 0.9
     moderate_frame_stride: int = 3
     min_temporal_candidates: int = 4

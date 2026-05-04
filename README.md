@@ -111,6 +111,8 @@ FUSIONTRACK_MODELS=yolo26n,yolo26s,yolov8s
 FUSIONTRACK_CONF=0.20
 FUSIONTRACK_DEVICE=cuda:0
 FUSIONTRACK_DEBUG=true
+# Production: require this on /v1/runsync, /process-delivery*, /v1/deliveries* (see below)
+FUSIONTRACK_API_KEY=<long-random-secret>
 ```
 
 Notes:
@@ -118,6 +120,7 @@ Notes:
 - `FUSIONTRACK_MODELS` accepts comma-separated names with or without `.pt`.
 - If no requested YOLO model files can be loaded, `/health` returns `status=models_missing` and delivery processing returns `503`.
 - `FUSIONTRACK_DEBUG=true` writes annotated candidate frames under each job/output artifact directory.
+- **`FUSIONTRACK_API_KEY`**: when set, clients must send **`Authorization: Bearer <key>`** or **`X-Api-Key: <key>`** on protected routes. **`/health`** and **`/models`** stay open for probes.
 
 ## Local Smoke Test
 
@@ -163,63 +166,116 @@ curl -X POST http://localhost:8000/v1/deliveries \
 
 The Docker image uses a CUDA runtime base (CUDA 12.4). On a rented GPU pod (for example RTX 4090 / A40), 24 GB VRAM is comfortable; H100 is not required.
 
-## FusionTrack engine pod (RunPod GPU pod)
+## FusionTrack engine (GPU cloud: Vast.ai, RunPod, etc.)
 
-This repo targets a **dedicated pod** (for example `fusiontrack_engine_pod`) with GPU + PyTorch (2.4.x is fine), not RunPod Serverless. The pod runs the FastAPI app and returns analysis plus the sync consumer overlay as base64 from `POST /v1/runsync`.
+The service is **FastAPI + PyTorch** on a GPU VM. Same code path everywhere; only **networking and disk** change between providers.
 
-### One-time setup on the pod (SSH or web terminal)
+### Vast.ai (PyTorch template, RTX 4090, etc.)
 
-1. **Open a shell** on the pod (RunPod SSH, TCP SSH, or web terminal).
+Vast maps **random public ports** to fixed **container ports** (see **IP & Port Info** on the instance). Typical PyTorch/Jupyter templates expose **8080** for Jupyter in the browser, **not** 8000 for FusionTrack unless you add a mapping.
 
-2. **Clone the repo** (after you push to GitHub):
+#### Disk when creating the instance
+
+Use **`--disk` ≥ 64** (GB) for a comfortable install (`torch` + `ultralytics` + venv + models + temp). **`--disk 16` is too small** and installs will fail or fill the root filesystem.
+
+#### One-time setup (SSH into the instance)
+
+Use **Connect → SSH** (or direct TCP). Example: public **`213.181.123.59`**, SSH **`40899` → 22**:
+
+```bash
+ssh -p 40899 root@213.181.123.59 -i ~/.ssh/<your_key>
+```
+
+If SSH **asks for a password**, key auth is not wired: add your **public** SSH key in **Vast account → SSH keys** (and/or the instance template), then use **`-i`** to the matching private key. Password login is insecure for automation; prefer keys only.
+
+On the instance (paths often under `/workspace`):
+
+```bash
+cd /workspace   # or $DATA_DIRECTORY if set
+git clone https://github.com/<your-org>/FusionTrackCloud.git
+cd FusionTrackCloud
+
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+Put YOLO weights in `models/` per `models/README.md`, then:
+
+```bash
+export FUSIONTRACK_DEVICE=cuda:0
+chmod +x scripts/run_engine.sh   # once
+./scripts/run_engine.sh
+```
+
+`run_engine.sh` binds **`0.0.0.0:8000`** (override with `FUSIONTRACK_PORT`) and sets **`YOLO_CONFIG_DIR`** under the repo so Ultralytics is writable.
+
+#### Expose port **8000** so clients can call the API (no SSH required)
+
+**Recommended — Vast “open port” / port mapping**
+
+1. Ensure **`./scripts/run_engine.sh`** (or `uvicorn ... --port 8000`) is running **inside** the instance.
+2. In the Vast UI for that instance, open **Edit** / **Connect** / **Ports** (wording varies) and **add a published port** for **container TCP `8000`**.
+3. After it appears under **IP & Port Info**, you will see e.g. **`213.181.123.59:40555 -> 8000/tcp`**.
+
+Then any client on the internet can reach:
+
+- `http://213.181.123.59:40555/health`
+- `http://213.181.123.59:40555/v1/runsync`
+
+Use **HTTPS** in production (reverse proxy, Cloudflare Tunnel, or TLS-terminating load balancer in front of that TCP port). The FastAPI app itself speaks plain HTTP.
+
+**Jupyter** (e.g. **`40196 -> 8080`**) is separate from FusionTrack on **8000**; both can run at once.
+
+**Optional — SSH local port forward (dev only)**
+
+If you cannot publish 8000 yet, from a machine with working key-based SSH:
+
+```bash
+ssh -p 40899 root@213.181.123.59 -i ~/.ssh/<your_key> -L 8000:127.0.0.1:8000 -N
+```
+
+Then `curl http://127.0.0.1:8000/health` on that machine forwards to the instance.
+
+#### Securing who can call the engine
+
+1. **Set a secret on the GPU box** (long random string):
 
    ```bash
-   cd ~
-   git clone https://github.com/<your-org>/FusionTrackCloud.git
-   cd FusionTrackCloud
+   export FUSIONTRACK_API_KEY='paste-a-long-random-secret-here'
+   ./scripts/run_engine.sh
    ```
 
-3. **Python environment** (use the pod’s Python 3 if already good; otherwise create a venv):
+2. **Clients** send either header on each request to **`/v1/runsync`**, **`/process-delivery`**, **`/process-delivery-debug`**, **`/v1/deliveries`**:
+
+   - `Authorization: Bearer <same-secret>`  
+   - or `X-Api-Key: <same-secret>`
+
+   Example:
 
    ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate
-   pip install --upgrade pip
-   pip install -r requirements.txt
+   curl -sS http://PUBLIC_IP:MAPPED_PORT/health
+   curl -sS -X POST http://PUBLIC_IP:MAPPED_PORT/v1/runsync \
+     -H "Authorization: Bearer $FUSIONTRACK_API_KEY" \
+     -H "Content-Type: application/json" \
+     -d '{"input":{"metadata":{...},"videoBase64":"..."}}'
    ```
 
-4. **Model weights** — copy your YOLO checkpoints into `models/` as described in `models/README.md`.
+3. **Best practice for iOS + webapp**: do **not** put the GPU secret inside the iPhone app if you can avoid it. Run a small **web backend** (your server) that authenticates users (session, JWT, Sign in with Apple, etc.), then **only the backend** calls Vast with `FUSIONTRACK_API_KEY`. The iOS app calls **your** HTTPS API; your server forwards to the GPU URL. That way a leaked build does not leak GPU access.
 
-5. **Configuration** (optional):
+4. **Defense in depth**: rate-limit at your web proxy, cap upload size (`FUSIONTRACK_MAX_UPLOAD_MB`), rotate `FUSIONTRACK_API_KEY` when staff change, and restrict Vast firewall / allowlist IPs if Vast offers it for your tier.
 
-   ```bash
-   export FUSIONTRACK_DEVICE=cuda:0
-   # export FUSIONTRACK_MODELS=...   # see README “Configuration”
-   ```
+### RunPod (optional)
 
-6. **Start the API** (bind all interfaces so RunPod’s HTTP proxy can reach you):
+Same clone → venv → `models/` → `./scripts/run_engine.sh` or `uvicorn app.main:app --host 0.0.0.0 --port 8000`. You must expose **HTTP port 8000** in the pod UI (or use SSH **`-L 8000:127.0.0.1:8000`**). URL pattern: `https://<pod-id>-8000.proxy.runpod.net`.
 
-   ```bash
-   cd ~/FusionTrackCloud   # or your clone path
-   source .venv/bin/activate
-   uvicorn app.main:app --host 0.0.0.0 --port 8000
-   ```
+### Notes (all providers)
 
-   - RunPod **HTTP services** often expose a URL like `https://<pod-id>-8000.proxy.runpod.net` → your process must listen on **port 8000** inside the pod (or change the exposed port in the RunPod UI to match your `--port`).
-   - **Jupyter on 8888** does not run FusionTrack; keep Jupyter if you like, but Speed Studio should call **8000** (or whichever port you map to `uvicorn`).
-
-7. **Smoke test** — on the pod (second terminal) or from your laptop:
-
-   ```bash
-   curl -sS "http://127.0.0.1:8000/health"
-   # or: curl -sS "https://<pod-id>-8000.proxy.runpod.net/health"
-   ```
-
-### Notes
-
-- **No `handler.py` / serverless**: inference is only via **FastAPI** (`uvicorn app.main:app`).
-- **Artifacts**: `run_speed_studio_job` writes temp job dirs then deletes them; the client receives metrics and `consumerOverlayVideoBase64`, not files on disk.
-- **PyTorch 2.4.0 template pods**: you do not have to use the repo `Dockerfile` if the template already has CUDA + Python; `pip install -r requirements.txt` on top is enough as long as versions resolve.
+- **No serverless handler**: only **FastAPI** (`uvicorn app.main:app`).
+- **`POST /v1/runsync`**: response includes metrics and **`consumerOverlayVideoBase64`** (sync overlay when available); see `speed_studio_job.py`.
+- **Pre-built PyTorch images**: you usually do **not** need this repo’s `Dockerfile`; `pip install -r requirements.txt` is enough if versions resolve.
+- **`FUSIONTRACK_API_KEY`**: optional; when unset, protected routes accept any caller (fine on localhost only). Set it for any instance reachable from the public internet.
 
 ## iOS Integration Notes
 

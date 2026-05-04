@@ -7,8 +7,9 @@ import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 
+from app.auth import require_engine_auth
 from app.config import get_settings
 from app.schemas import DebugProcessResponse, DeliveryJobCreated, DeliveryJobStatus, DeliveryMetadata, DeliveryResult, HealthResponse, JobStatus, ModelsResponse
 from pipeline.orchestrator import DeliveryProcessingPipeline, ProcessingOptions
@@ -35,14 +36,14 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(title="FusionTrack Cloud", version="0.1.0", lifespan=lifespan)
 
 
-@app.post("/v1/runsync")
+@app.post("/v1/runsync", dependencies=[Depends(require_engine_auth)])
 async def speed_studio_runsync(request: Request) -> dict:
     """
     JSON for iOS Speed Studio: body ``{"input": { metadata, videoBase64, ... }}``,
     response ``{ "status": "COMPLETED", "output": { ... } }``.
 
-    Point the app at your engine pod URL, e.g. ``https://<id>-8000.proxy.runpod.net/v1/runsync``
-    (path must end with ``runsync`` so the client does not double-append).
+    Point the app at your engine URL (Vast ``http://<ip>:<mapped-port>``, RunPod proxy, or SSH tunnel
+    to ``127.0.0.1:8000``). Path must end with ``/v1/runsync`` so the client does not double-append.
     """
     try:
         body = await request.json()
@@ -96,7 +97,7 @@ async def models() -> ModelsResponse:
     )
 
 
-@app.post("/v1/deliveries", response_model=DeliveryJobCreated)
+@app.post("/v1/deliveries", response_model=DeliveryJobCreated, dependencies=[Depends(require_engine_auth)])
 async def create_delivery(
     background_tasks: BackgroundTasks,
     upload: UploadFile = File(...),
@@ -115,7 +116,7 @@ async def create_delivery(
     return DeliveryJobCreated(jobId=job_id, status=JobStatus.queued)
 
 
-@app.post("/process-delivery", response_model=DeliveryResult)
+@app.post("/process-delivery", response_model=DeliveryResult, dependencies=[Depends(require_engine_auth)])
 async def process_delivery(
     upload: UploadFile = File(...),
     metadata: str = Form(...),
@@ -143,7 +144,7 @@ async def process_delivery(
     return result
 
 
-@app.post("/process-delivery-debug", response_model=DebugProcessResponse)
+@app.post("/process-delivery-debug", response_model=DebugProcessResponse, dependencies=[Depends(require_engine_auth)])
 async def process_delivery_debug(
     upload: UploadFile = File(...),
     metadata: str = Form(...),
@@ -180,7 +181,7 @@ async def process_delivery_debug(
     )
 
 
-@app.get("/v1/deliveries/{job_id}", response_model=DeliveryJobStatus)
+@app.get("/v1/deliveries/{job_id}", response_model=DeliveryJobStatus, dependencies=[Depends(require_engine_auth)])
 async def get_delivery(job_id: str) -> DeliveryJobStatus:
     status = store.read_status(job_id)
     if status is None:
