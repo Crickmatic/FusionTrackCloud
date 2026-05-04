@@ -27,7 +27,7 @@ def find_sample_video() -> Path:
     named = ROOT.parent / "test video.MOV"
     if named.exists():
         return named
-    raise SystemExit("No sample clip found. Add a small .mp4/.mov or frame .zip under fusiontrack-cloud/samples/.")
+    raise SystemExit("No sample clip found. Add a small .mp4/.mov or frame .zip under samples/.")
 
 
 def build_metadata(delivery_id: str) -> DeliveryMetadata:
