@@ -1,0 +1,71 @@
+{
+  "schemaVersion": "fusiontrack.captureMetadata.v1",
+  "sessionId": "manual-calibration-session",
+  "deliveryId": "test-video-manual-calibration",
+  "calibrationMode": "ar_world",
+  "confidence": 0.95,
+  "fps": null,
+  "resolution": {
+    "width": 1080,
+    "height": 1920
+  },
+  "pitch": {
+    "lengthMeters": 20.12,
+    "batterEndStumpsWorld": [0.0, 0.0, 0.0],
+    "bowlerEndStumpsWorld": [0.0, 0.0, 20.12],
+    "creasePositionsMeters": {
+      "battingCreaseFromBatterStumps": 1.22,
+      "bowlingCreaseFromBowlerStumps": 1.22
+    },
+    "corridorWorld": [
+      [-1.525, 0.0, 0.0],
+      [1.525, 0.0, 0.0],
+      [1.525, 0.0, 20.12],
+      [-1.525, 0.0, 20.12]
+    ]
+  },
+  "camera": {
+    "intrinsics": [[1200.0, 0.0, 540.0], [0.0, 1200.0, 960.0], [0.0, 0.0, 1.0]],
+    "extrinsicsByFrame": null,
+    "staticPose": null
+  },
+  "watch": {
+    "releaseTimestampSec": null,
+    "confidence": null
+  },
+  "capture": {
+    "triggerTimestampSec": null,
+    "preRollSec": 1.0,
+    "clipStartWallTime": null
+  },
+  "frameTimestamps": [],
+  "pitchCalibration": {
+    "pitchLengthMeters": 20.12,
+    "pitchWidthMeters": 3.05,
+    "anchors": {},
+    "worldTransform": null
+  },
+  "corridorGeometry": {
+    "pitchPolygon": [
+      { "x": 0.44, "y": 0.18 },
+      { "x": 0.56, "y": 0.18 },
+      { "x": 0.62, "y": 0.88 },
+      { "x": 0.38, "y": 0.88 }
+    ],
+    "spine": [
+      { "x": 0.5, "y": 0.18 },
+      { "x": 0.5, "y": 0.88 }
+    ],
+    "releaseZone": null
+  },
+  "cameraResolution": {
+    "width": 1080,
+    "height": 1920
+  },
+  "watchEvents": {},
+  "bowlingProfile": {
+    "hand": "unknown"
+  },
+  "localYoloCandidates": [],
+  "extras": {}
+}

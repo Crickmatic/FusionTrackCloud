@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+python-multipart
+pydantic>=2
+pydantic-settings>=2
+eval_type_backport
+ultralytics
+opencv-python-headless
+numpy
+scipy
+pytest
+httpx

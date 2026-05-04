@@ -1,0 +1,9 @@
+{
+  "clipName": "test video.MOV",
+  "durationSec": 5.0,
+  "runUpVisibleStartSec": 3.0,
+  "releaseSecRange": [3.27, 3.30],
+  "bounceSec": 3.80,
+  "stumpImpactSec": 4.23,
+  "notes": "Manual human estimate from frame review"
+}
