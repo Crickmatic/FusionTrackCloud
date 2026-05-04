@@ -21,8 +21,7 @@ COPY inference inference
 COPY pipeline pipeline
 COPY storage storage
 COPY models models
-COPY runpod_speed_studio.py runpod_speed_studio.py
-COPY handler.py handler.py
+COPY speed_studio_job.py speed_studio_job.py
 
 EXPOSE 8000
 

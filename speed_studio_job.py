@@ -1,10 +1,7 @@
 """
-Speed Studio + RunPod: same processing path as scripts/run_test3_reference.py
-(metadata JSON + video file → pipeline with artifact_dir → consumer overlay base64).
+Speed Studio job runner: metadata JSON + video bytes → full pipeline → metrics + overlay video (base64).
 
-Used by:
-- FastAPI POST /v1/runsync (dedicated RunPod pod behind https://…proxy.runpod.net)
-- handler.handler (RunPod Serverless) when the image sets handler = runpod_speed_studio.handler
+Used by FastAPI ``POST /v1/runsync`` (see ``app.main``). Same processing path as ``scripts/run_test3_reference.py``.
 """
 
 from __future__ import annotations
@@ -18,13 +15,13 @@ import traceback
 from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger("fusiontrack.runpod_speed_studio")
+logger = logging.getLogger("fusiontrack.speed_studio_job")
 
 _pipeline_singleton: Any = None
 
 
 def _get_standalone_pipeline():
-    """Lazy pipeline for RunPod serverless / handler entry (no FastAPI lifespan)."""
+    """Lazy pipeline when no FastAPI lifespan has run (e.g. one-off scripts)."""
     global _pipeline_singleton
     if _pipeline_singleton is None:
         from app.config import get_settings
@@ -39,12 +36,12 @@ def _get_standalone_pipeline():
 
 def run_speed_studio_job(inp: dict[str, Any], *, pipeline: Any | None = None) -> dict[str, Any]:
     """
-    Input (RunPod ``event["input"]`` or Speed Studio inner dict):
+    Input (inner ``input`` object from Speed Studio / JSON API):
 
     - ``metadata``: object (fusiontrack.captureMetadata.v1)
     - ``videoBase64``: base64-encoded clip bytes
     - ``debug``: bool — if true, first overlay render uses ``render_mode="debug"`` (like reference script)
-    - ``renderConsumerOverlay``: bool — default true; must be true to produce consumer MP4
+    - ``renderConsumerOverlay``: bool — default true; must be true to produce overlay MP4s
     - ``filename``: optional hint for temp suffix
     """
     from app.schemas import DeliveryMetadata
@@ -163,19 +160,21 @@ def run_speed_studio_job(inp: dict[str, Any], *, pipeline: Any | None = None) ->
             "stumpsHitting": result.stumpsHitting,
             "annotatedVideoPath": result.annotatedVideoPath,
             "consumerAnnotatedVideoPath": result.consumerAnnotatedVideoPath,
+            "consumerSyncAnnotatedVideoPath": result.consumerSyncAnnotatedVideoPath,
         }
         out.update(thin)
         out["result"] = thin
 
-        consumer_path = result.consumerAnnotatedVideoPath
-        if want_render and consumer_path:
-            cpath = Path(consumer_path)
-            if cpath.is_file():
-                b64vid = base64.standard_b64encode(cpath.read_bytes()).decode("ascii")
-                out["consumerOverlayVideoBase64"] = b64vid
+        # Primary return video: time-synced consumer overlay (smaller / no intro segments).
+        overlay_path_str = result.consumerSyncAnnotatedVideoPath or result.consumerAnnotatedVideoPath
+        if want_render and overlay_path_str:
+            opath = Path(overlay_path_str)
+            if opath.is_file():
+                out["consumerOverlayVideoBase64"] = base64.standard_b64encode(opath.read_bytes()).decode("ascii")
+                out["consumerOverlayKind"] = "sync" if result.consumerSyncAnnotatedVideoPath else "full"
             else:
                 out["consumerOverlayVideoBase64"] = None
-                out["debug"] = {"warning": "consumer_overlay_missing", "path": str(cpath)}
+                out["debug"] = {"warning": "consumer_overlay_missing", "path": str(opath)}
         else:
             out["consumerOverlayVideoBase64"] = None
 
@@ -199,22 +198,3 @@ def run_speed_studio_job(inp: dict[str, Any], *, pipeline: Any | None = None) ->
                 shutil.rmtree(artifact_dir, ignore_errors=True)
             except OSError:
                 pass
-
-
-def handler(event: dict[str, Any]) -> dict[str, Any]:
-    """RunPod Serverless entry: ``event`` has ``input`` dict (Speed Studio payload)."""
-    inp = event.get("input")
-    if not isinstance(inp, dict):
-        inp = {}
-    try:
-        out = run_speed_studio_job(inp, pipeline=None)
-        return {"output": out}
-    except Exception as exc:  # noqa: BLE001
-        return {
-            "output": {
-                "success": False,
-                "schemaVersion": "fusiontrack.publicResult.v1",
-                "error": str(exc),
-                "traceback": traceback.format_exc(),
-            }
-        }

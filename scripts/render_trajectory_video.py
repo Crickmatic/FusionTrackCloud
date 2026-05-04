@@ -22,7 +22,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config", default="ball_v2_plus_stumps")
     parser.add_argument("--process", action="store_true")
     parser.add_argument("--out", required=True)
-    parser.add_argument("--mode", choices=["product", "debug"], default="product")
+    parser.add_argument("--mode", choices=["product", "debug", "consumer", "consumer_sync"], default="product")
     parser.add_argument("--archive", action="store_true")
     return parser.parse_args()
 
@@ -59,6 +59,7 @@ def main() -> None:
                 {
                     "annotatedVideoPath": result.annotatedVideoPath,
                     "consumerAnnotatedVideoPath": result.consumerAnnotatedVideoPath,
+                    "consumerSyncAnnotatedVideoPath": result.consumerSyncAnnotatedVideoPath,
                     "renderFramesCount": result.renderFramesCount,
                     "outputVideoSizeMb": result.outputVideoSizeMb,
                 },

@@ -38,11 +38,11 @@ app = FastAPI(title="FusionTrack Cloud", version="0.1.0", lifespan=lifespan)
 @app.post("/v1/runsync")
 async def speed_studio_runsync(request: Request) -> dict:
     """
-    RunPod-style JSON for iOS Speed Studio: body ``{"input": { metadata, videoBase64, ... }}``,
-    response ``{ "status": "COMPLETED", "output": { ... } }`` (same keys the app already parses).
+    JSON for iOS Speed Studio: body ``{"input": { metadata, videoBase64, ... }}``,
+    response ``{ "status": "COMPLETED", "output": { ... } }``.
 
-    Use base URL ``https://<pod>-8000.proxy.runpod.net/v1/runsync`` in ``FusionTrackRunpodRunsyncURL``
-    (path already ends with ``runsync`` so the app will not double-append).
+    Point the app at your engine pod URL, e.g. ``https://<id>-8000.proxy.runpod.net/v1/runsync``
+    (path must end with ``runsync`` so the client does not double-append).
     """
     try:
         body = await request.json()
@@ -51,7 +51,7 @@ async def speed_studio_runsync(request: Request) -> dict:
     inner = body.get("input")
     if not isinstance(inner, dict):
         raise HTTPException(status_code=400, detail="JSON body must include an object in key 'input'")
-    from runpod_speed_studio import run_speed_studio_job
+    from speed_studio_job import run_speed_studio_job
 
     out = run_speed_studio_job(inner, pipeline=pipeline)
     return {"status": "COMPLETED", "id": str(uuid.uuid4()), "output": out}

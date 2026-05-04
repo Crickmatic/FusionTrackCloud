@@ -114,6 +114,7 @@ def write_run_summary(out_dir: Path, clip: Path, result, elapsed_s: float) -> No
         "endPoint": result.endPoint.model_dump(),
         "annotatedVideoPath": result.annotatedVideoPath,
         "consumerAnnotatedVideoPath": result.consumerAnnotatedVideoPath,
+        "consumerSyncAnnotatedVideoPath": result.consumerSyncAnnotatedVideoPath,
         "reconstructionStats": recon_pick,
         "drsFinalDecision": (result.drsDecision or {}).get("finalDecision"),
     }
@@ -170,6 +171,7 @@ def main() -> None:
     write_run_summary(out_dir, clip, result, elapsed)
     print(f"Done in {elapsed:.1f}s — debug: {result.annotatedVideoPath}")
     print(f"Consumer: {result.consumerAnnotatedVideoPath}")
+    print(f"Consumer (sync only): {result.consumerSyncAnnotatedVideoPath}")
     print(f"Summary:  {out_dir / 'run_summary.json'}")
 
 

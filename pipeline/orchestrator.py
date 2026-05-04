@@ -629,6 +629,20 @@ class DeliveryProcessingPipeline:
             result.consumerRenderFramesCount = consumer_artifacts.frames_rendered
             result.consumerOutputVideoSizeMb = consumer_artifacts.output_video_size_mb
             result.debug.notes.append(f"Rendered consumer overlay video: {consumer_artifacts.annotated_video_path}")
+            consumer_sync_path = render_dir / "consumer_overlay_sync.mp4"
+            sync_artifacts = self.renderer.render(
+                clip_path=upload_path,
+                result=result,
+                metadata=metadata,
+                selected_tracklet=tracklet_result.selected_candidates,
+                merged_candidates=windowed_candidates,
+                output_path=consumer_sync_path,
+                mode="consumer_sync",
+            )
+            result.consumerSyncAnnotatedVideoPath = str(sync_artifacts.annotated_video_path)
+            result.consumerSyncRenderFramesCount = sync_artifacts.frames_rendered
+            result.consumerSyncOutputVideoSizeMb = sync_artifacts.output_video_size_mb
+            result.debug.notes.append(f"Rendered consumer sync-only overlay: {sync_artifacts.annotated_video_path}")
             render_elapsed_ms = (time.perf_counter() - render_started) * 1000.0
             result_path = artifact_dir / "result.json"
             if result_path.exists():

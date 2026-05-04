@@ -79,7 +79,7 @@ class TrajectoryRenderer:
             )
         else:
             self._canonical_arc_xyt = None
-        if mode == "consumer":
+        if mode in ("consumer", "consumer_sync"):
             frame_idx = self._render_consumer_flow(
                 capture=capture,
                 writer=writer,
@@ -87,6 +87,7 @@ class TrajectoryRenderer:
                 width=width,
                 height=height,
                 fps=fps,
+                sync_replay_only=(mode == "consumer_sync"),
             )
         else:
             while True:
@@ -160,6 +161,7 @@ class TrajectoryRenderer:
         width: int,
         height: int,
         fps: float,
+        sync_replay_only: bool = False,
     ) -> int:
         frames: list[np.ndarray] = []
         while True:
@@ -186,6 +188,17 @@ class TrajectoryRenderer:
             trajectory_start_t = min((point[2] for point in raw_points), default=0.0)
             trajectory_end_t = max((point[2] for point in raw_points), default=max(1e-6, len(frames) / max(1e-6, fps)))
         frame_count = 0
+
+        if sync_replay_only:
+            return frame_count + self._render_consumer_synced_replay(
+                frames=frames,
+                writer=writer,
+                smooth_points=smooth_points,
+                trajectory_start_t=trajectory_start_t,
+                trajectory_end_t=trajectory_end_t,
+                fps=fps,
+                frame_count=0,
+            )
 
         # 1. Raw delivery: let the user watch the ball without analysis clutter.
         for frame in frames:
@@ -223,6 +236,28 @@ class TrajectoryRenderer:
             frame_count += 1
 
         # 4. Replay original clip with trajectory drawn in sync with ball movement.
+        return frame_count + self._render_consumer_synced_replay(
+            frames=frames,
+            writer=writer,
+            smooth_points=smooth_points,
+            trajectory_start_t=trajectory_start_t,
+            trajectory_end_t=trajectory_end_t,
+            fps=fps,
+            frame_count=frame_count,
+        )
+
+    def _render_consumer_synced_replay(
+        self,
+        frames: list[np.ndarray],
+        writer: cv2.VideoWriter,
+        smooth_points: list[tuple[int, int]],
+        trajectory_start_t: float,
+        trajectory_end_t: float,
+        fps: float,
+        frame_count: int,
+    ) -> int:
+        """Single pass: original frames with trajectory + speed panel time-synced to the ball."""
+        added = 0
         for replay_index, frame in enumerate(frames):
             output = frame.copy()
             frame_time = replay_index / max(1e-6, fps)
@@ -233,8 +268,8 @@ class TrajectoryRenderer:
             if progress > 0.98:
                 self._draw_consumer_info_panel(output)
             writer.write(output)
-            frame_count += 1
-        return frame_count
+            added += 1
+        return added
 
     def _draw_scene(
         self,

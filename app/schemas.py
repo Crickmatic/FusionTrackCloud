@@ -230,10 +230,13 @@ class DeliveryResult(BaseModel):
     endpointSource: str | None = None
     annotatedVideoPath: str | None = None
     consumerAnnotatedVideoPath: str | None = None
+    consumerSyncAnnotatedVideoPath: str | None = None
     renderFramesCount: int | None = None
     consumerRenderFramesCount: int | None = None
+    consumerSyncRenderFramesCount: int | None = None
     outputVideoSizeMb: float | None = None
     consumerOutputVideoSizeMb: float | None = None
+    consumerSyncOutputVideoSizeMb: float | None = None
     debug: DeliveryDebug
 
 

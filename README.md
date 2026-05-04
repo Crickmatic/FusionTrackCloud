@@ -80,6 +80,16 @@ Returns `queued`, `processing`, `complete`, or `failed`. Complete responses incl
 
 Returns loaded models and the default production config (`ball_v2_plus_stumps`).
 
+### `POST /v1/runsync`
+
+Synchronous JSON for **Speed Studio** (and similar clients). Body shape:
+
+```json
+{ "input": { "metadata": { ... }, "videoBase64": "..." } }
+```
+
+Response: `{ "status": "COMPLETED", "id": "...", "output": { ... } }`. When `renderConsumerOverlay` is true (default), `output.consumerOverlayVideoBase64` is the **time-synced** consumer overlay MP4 (same style as `consumer_overlay_sync.mp4` from local runs). Optional `output.consumerOverlayKind` is `"sync"` or `"full"`.
+
 ## Local Run
 
 ```bash
@@ -151,16 +161,65 @@ curl -X POST http://localhost:8000/v1/deliveries \
   }'
 ```
 
-The Docker image uses a CUDA runtime base. Start with RTX 4090, A40, or A6000 class GPUs for RunPod. H100 is not required.
+The Docker image uses a CUDA runtime base (CUDA 12.4). On a rented GPU pod (for example RTX 4090 / A40), 24 GB VRAM is comfortable; H100 is not required.
 
-## RunPod Deployment
+## FusionTrack engine pod (RunPod GPU pod)
 
-Recommended path:
+This repo targets a **dedicated pod** (for example `fusiontrack_engine_pod`) with GPU + PyTorch (2.4.x is fine), not RunPod Serverless. The pod runs the FastAPI app and returns analysis plus the sync consumer overlay as base64 from `POST /v1/runsync`.
 
-- Use RunPod Serverless for API inference.
-- Use Pods for training and experiments only.
-- Bake or mount model weights into `/app/models`.
-- Configure via env vars with `FUSIONTRACK_` prefix.
+### One-time setup on the pod (SSH or web terminal)
+
+1. **Open a shell** on the pod (RunPod SSH, TCP SSH, or web terminal).
+
+2. **Clone the repo** (after you push to GitHub):
+
+   ```bash
+   cd ~
+   git clone https://github.com/<your-org>/FusionTrackCloud.git
+   cd FusionTrackCloud
+   ```
+
+3. **Python environment** (use the pod’s Python 3 if already good; otherwise create a venv):
+
+   ```bash
+   python3 -m venv .venv
+   source .venv/bin/activate
+   pip install --upgrade pip
+   pip install -r requirements.txt
+   ```
+
+4. **Model weights** — copy your YOLO checkpoints into `models/` as described in `models/README.md`.
+
+5. **Configuration** (optional):
+
+   ```bash
+   export FUSIONTRACK_DEVICE=cuda:0
+   # export FUSIONTRACK_MODELS=...   # see README “Configuration”
+   ```
+
+6. **Start the API** (bind all interfaces so RunPod’s HTTP proxy can reach you):
+
+   ```bash
+   cd ~/FusionTrackCloud   # or your clone path
+   source .venv/bin/activate
+   uvicorn app.main:app --host 0.0.0.0 --port 8000
+   ```
+
+   - RunPod **HTTP services** often expose a URL like `https://<pod-id>-8000.proxy.runpod.net` → your process must listen on **port 8000** inside the pod (or change the exposed port in the RunPod UI to match your `--port`).
+   - **Jupyter on 8888** does not run FusionTrack; keep Jupyter if you like, but Speed Studio should call **8000** (or whichever port you map to `uvicorn`).
+
+7. **Smoke test** — on the pod (second terminal) or from your laptop:
+
+   ```bash
+   curl -sS "http://127.0.0.1:8000/health"
+   # or: curl -sS "https://<pod-id>-8000.proxy.runpod.net/health"
+   ```
+
+### Notes
+
+- **No `handler.py` / serverless**: inference is only via **FastAPI** (`uvicorn app.main:app`).
+- **Artifacts**: `run_speed_studio_job` writes temp job dirs then deletes them; the client receives metrics and `consumerOverlayVideoBase64`, not files on disk.
+- **PyTorch 2.4.0 template pods**: you do not have to use the repo `Dockerfile` if the template already has CUDA + Python; `pip install -r requirements.txt` on top is enough as long as versions resolve.
 
 ## iOS Integration Notes
 
